@@ -1,10 +1,16 @@
+! ol:3n { numbering: "($1)" }
+! ol:3n+1 { numbering: "($1)", lower-latin }
+! ol:3n+2 { numbering: "($1)", lower-roman }
+! h:1 { numbering: "Part $1", upper-roman }
+! h:n+1 { numbering: join("$n", '.') } 
+
 # First Title
 
-Paragraph of content 1.
+Paragraph of *content* 1.
 
-Paragraph of content 2.
+Paragraph of /content/ 2.
 
-Paragraph of content 3.
+Paragraph of _content_ 3.
 
 Paragraph of content 4.
 

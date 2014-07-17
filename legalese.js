@@ -9,7 +9,9 @@ function HTMLParser() {};
 
 HTMLParser.prototype = {
     parse: function(data) {
-        var out = [],
+        var self = this,
+            out = [],
+            styles = [],
             depth = -1,
             sectionDepth = 0,
             lastToken;
@@ -31,13 +33,13 @@ HTMLParser.prototype = {
                     }
 
                     out.push("<h" + sectionDepth + ">" +
-                             x.content +
+                             self._handleContent(x.content) +
                              "</h" + sectionDepth + ">");
                     
                     break;
 
                 case Token.PARA:
-                    out.push('<p>' + x.content + "</p>");
+                    out.push('<p>' + self._handleContent(x.content) + "</p>");
                     break;
 
                 case Token.BQ_BEGIN:
@@ -91,11 +93,18 @@ HTMLParser.prototype = {
                         out[out.length-1] += "</li>";
                     }
                     
-                    out.push("<li>" + x.content);
+                    out.push("<li>" + self._handleContent(x.content));
                     break;
 
+                case Token.DIRECTIVE:
+                    switch (x.content.selector.name) {
+                        case 'h':
+                            styles.push("h" + x.content.selector.pseudo + ":before { content: 'stub '; }");
+                    }
+                    break;
+                        
                 default:
-                    throw new Error("Invalid token");
+                    throw new Error("Invalid token: " + x.type);
             }
 
             lastToken = x.type;
@@ -109,7 +118,24 @@ HTMLParser.prototype = {
             sectionDepth--;
         }
 
-        return out.join('\n');
+        return "<style>\n" + styles.join('\n') + "\n</style>\n" +  out.join('\n');
+    },
+
+    _handleContent: function(content) {
+        return content.map(function(c) {
+            switch (c.type) {
+                case Token.TEXT:
+                    return c.content;
+                case Token.BOLD:
+                    return "<strong>" + c.content + "</strong>";
+                case Token.ITALIC:
+                    return "<em>" + c.content + "</em>";
+                case Token.UNDERLINE:
+                    return "<u>" + c.content + "</u>";
+                default:
+                    throw new Error("Invalid content token: " + c.type);
+            }
+        }).join("");
     }
 }
 

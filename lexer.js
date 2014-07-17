@@ -26,9 +26,17 @@ function Token(type, content, depth) {
  "UL_LI UL_BEGIN UL_END " + 
  "OL_LI OL_BEGIN OL_END " +
  "BQ_LI BQ_BEGIN BQ_END " +
- "SECTION").split(" ").forEach(function(t, i) {
-    Object.defineProperty(Token, t, { value: i });
+ "SECTION REF LINK " +
+ "BOLD ITALIC UNDERLINE " +
+ "SUP SUB STRIKETHROUGH " +
+ "SERIF SANS MONOSPACED").split(" ").forEach(function(t, i) {
+    Object.defineProperty(Token, t, { value: i, enumerable: true});
 });
+
+
+debug(require('util').inspect(Token));
+// TODO: implement ref, link, bold, italic, underline, sup, sub,
+// strikethrough, serif, sans, monospaced
 
 exports.Token = Token;
 
@@ -63,8 +71,7 @@ Lexer.prototype = {
         if (lineData.token == Token.BQ_LI) {
             while (lineData.depth > this._bqDepth) {
                 if (this._buf.length > 0 && this._lastToken == Token.TEXT) {
-                    out.push(new Token(Token.PARA, this._buf.join(" ")));
-                    this._buf = [];
+                    out.push(new Token(Token.PARA, this._consumeBuffer()));
                 }
             
                 out.push(new Token(Token.BQ_BEGIN));
@@ -73,8 +80,7 @@ Lexer.prototype = {
 
             while (lineData.depth < this._bqDepth) {
                 if (this._buf.length > 0 && this._lastToken == Token.TEXT) {
-                    out.push(new Token(Token.PARA, this._buf.join(" ")));
-                    this._buf = [];
+                    out.push(new Token(Token.PARA, this._consumeBuffer()));
                 }
                 
                 out.push(new Token(Token.BQ_END));
@@ -85,16 +91,21 @@ Lexer.prototype = {
         }
 
         switch (lineData.token) {
+            case Token.DIRECTIVE:
+                delete lineData.token;
+                out.push(new Token(Token.DIRECTIVE, lineData));
+                break;
+
             case Token.END:
             case Token.BLANK:
                 if (this._buf.length > 0 && this._lastToken == Token.TEXT) {
-                    out.push(new Token(Token.PARA, this._buf.join(" ")));
+                    out.push(new Token(Token.PARA, this._consumeBuffer(true)));
                 }
 
                 if (this._lastToken == Token.UL_LI || 
                     this._lastToken == Token.OL_LI) {
                     
-                    out.push(new Token(this._lastToken, this._buf.join(" ")));
+                    out.push(new Token(this._lastToken, this._consumeBuffer(true)));
                     
                     while (this._depthStack.length > 0) {
                         out.push(this._depthStack.pop());
@@ -114,7 +125,7 @@ Lexer.prototype = {
                 break;
             
             case Token.SECTION:
-                out.push(new Token(Token.SECTION, lineData.content, lineData.depth));
+                out.push(new Token(Token.SECTION, this._lexContent(lineData.content), lineData.depth));
                 break;
             
             case Token.OL_LI:
@@ -125,16 +136,14 @@ Lexer.prototype = {
                     if (lineData.depth != this._depthStack.length-1) {
                         if (this._lastToken == lineData.token ||
                             this._lastToken == Token.UL_LI) {
-                            out.push(new Token(Token.OL_LI, this._buf.join(" ")));
-                            this._buf = [];
+                            out.push(new Token(Token.OL_LI, this._consumeBuffer()));
                         }
                         out.push(new Token(
                             lineData.depth > this._depthStack.length-1 ? Token.OL_BEGIN : Token.OL_END));
                         this._depthStack.push(new Token(Token.OL_END));
                         //lastDepth = lineData.depth;
                     } else {
-                        out.push(new Token(Token.OL_LI, this._buf.join(" ")));
-                        this._buf = [];
+                        out.push(new Token(Token.OL_LI, this._consumeBuffer()));
                     }
 
                 }
@@ -150,8 +159,7 @@ Lexer.prototype = {
                     if (lineData.depth != this._depthStack.length-1) {
                         if (this._lastToken == lineData.token ||
                             this._lastToken == Token.OL_LI) {
-                            out.push(new Token(Token.UL_LI, this._buf.join(" ")));
-                            this._buf = [];
+                            out.push(new Token(Token.UL_LI, this._consumeBuffer()));
                         }
                         out.push(new Token(
                             lineData.depth > this._depthStack.length-1 ? Token.UL_BEGIN : Token.UL_END));
@@ -159,8 +167,7 @@ Lexer.prototype = {
                         this._depthStack.push(new Token(Token.UL_END));
                         //lastDepth = lineData.depth;
                     } else {
-                        out.push(new Token(Token.UL_LI, this._buf.join(" ")));
-                        this._buf = [];
+                        out.push(new Token(Token.UL_LI, this._consumeBuffer()));
                     }
                 }
 
@@ -179,8 +186,66 @@ Lexer.prototype = {
         this._lastToken = lineData.token;
     },
 
+    _consumeBuffer: function(dontEmpty) {
+        var o = this._lexContent(this._buf.join(" "));
+        if (!dontEmpty) this._buf = [];
+        return o;
+    },
+
+    _lexContent: function(line) {
+        var chars = line.split(""),
+            tokens = [],
+            buf = [],
+            states = {},
+            ch, i, ii;
+
+        for (i = 0, ii = chars.length; i < ii; ++i) {
+            ch = chars[i];
+
+            switch(ch) {
+                case '*':
+                    states.bold = !states.bold;
+                    if (states.bold) { // Begin
+                        tokens.push(new Token(Token.TEXT, buf.join("")));
+                    } else { // End
+                        tokens.push(new Token(Token.BOLD, buf.join("")));
+                    }
+                    buf = [];
+                    break;
+                case '/':
+                    states.italic = !states.italic;
+                    if (states.italic) { // Begin
+                        tokens.push(new Token(Token.TEXT, buf.join("")));
+                    } else { // End
+                        tokens.push(new Token(Token.ITALIC, buf.join("")));
+                    }
+                    buf = [];
+                    break;
+                case '_':
+                    states.underline = !states.underline;
+                    if (states.underline) { // Begin
+                        tokens.push(new Token(Token.TEXT, buf.join("")));
+                    } else { // End
+                        tokens.push(new Token(Token.UNDERLINE, buf.join("")));
+                    }
+                    buf = [];
+                    break;
+                default:
+                    buf.push(ch);
+                    break;
+            }
+        }
+
+        if (buf.length > 0) {
+            tokens.push(new Token(Token.TEXT, buf.join("")));
+        }
+
+        return tokens;
+    },
+
     _detectToken: function(line) {
         var depth,
+            rules,
             raw,
             lastToken = this._lastToken,
             lastDepth = this._depthStack.length - 1;
@@ -271,6 +336,25 @@ Lexer.prototype = {
                      depth: raw[1].length };
         }
 
+        // Directive
+        if (/^!.*/.test(line)) {
+            raw = /^!\s*(.*)\s*{(.*)}/.exec(line);
+            rules = raw[2].trim().split(';');
+
+            rules.forEach(function(v, i) {
+                var data = v.split(':');
+                rules[i] = { key: data[0].trim(),
+                             value: data[1].split(',').map(function(r) { return r.trim(); }) };
+            });
+
+            raw = raw[1].trim().split(':');
+
+            return { token: Token.DIRECTIVE,
+                     selector: { name: raw[0],
+                                 pseudo: raw[1].trim() },
+                     rules: rules };
+        }
+        
         if (line == null) {
             return { token: Token.END };
         }

@@ -1,6 +1,6 @@
 "use strict";
 
-var cheerio = require('cheerio');
+var DEBUG = true;
 
 var TOKEN_BEGIN = 0,
     TOKEN_END = 1,
@@ -24,16 +24,23 @@ var TOKEN_BEGIN = 0,
 
     TOKEN_SECTION = 30;
 
+function debug() {
+    if (DEBUG) console.log.apply(this, arguments);
+}
+
 function Token(type, content, depth) {
     this.type = type;
     this.content = content;
     this.depth = depth;
 
-    console.log('TOKEN:', this);
+    debug('TOKEN:', this);
 }
 
 function Lexer() {
     this._buf = [];
+    this._lastToken = TOKEN_BEGIN;
+    this._depthStack = [];
+    this._bqDepth = 0;
 }
 
 function strMul(str, i) {
@@ -42,156 +49,149 @@ function strMul(str, i) {
 
 Lexer.prototype = {
     lex: function(data) {
-        var i, ii, line, 
-            lineData, 
-            lastToken = TOKEN_BEGIN,
-            depthStack = [],
-            bqDepth = 0,
+        var i, ii,
             out = [];
 
+        this._lastToken = TOKEN_BEGIN;
+        this._depthStack = [];
+        this._bqDepth = 0;
+
         for (i = 0, ii = data.length; i <= ii; ++i) {
-            if (i != ii) { 
-                line = data[i];
-                lineData = this.detectToken(line, lastToken, depthStack.length-1);
-            } else {
-                lineData = { token: TOKEN_END };
-            }
-            
-            console.log('LEX:', lineData);
-            
-            switch (lineData.token) {
-                case TOKEN_BQ_LI:
-                    while (lineData.depth > bqDepth) {
-                        if (this._buf.length > 0 && lastToken == TOKEN_TEXT) {
-                            out.push(new Token(TOKEN_PARA, this._buf.join(" ")));
-                            this._buf = [];
-                        }
-                    
-                        out.push(new Token(TOKEN_BQ_BEGIN));
-                        bqDepth++;
-                    }
-
-                    while (lineData.depth < bqDepth) {
-                        if (this._buf.length > 0 && lastToken == TOKEN_TEXT) {
-                            out.push(new Token(TOKEN_PARA, this._buf.join(" ")));
-                            this._buf = [];
-                        }
-                        
-                        out.push(new Token(TOKEN_BQ_END));
-                        bqDepth--;
-                    }
-
-                    // no break on purpose. :)
-                    //
-                    // TODO: fix this dodgy hack by having a proper state object
-                    // and a method for parsing one line at a time.
-                    //lineData = this.detectToken(lineData.content, lastToken, depthStack.length-1);
-
-                    data[i] = lineData.content;
-                    i--;
-                    continue;
-
-                case TOKEN_SECTION:
-                    out.push(new Token(TOKEN_SECTION, lineData.content, lineData.depth));
-                    break;
-                
-                case TOKEN_END:
-                case TOKEN_BLANK:
-                    if (this._buf.length > 0 && lastToken == TOKEN_TEXT) {
-                        out.push(new Token(TOKEN_PARA, this._buf.join(" ")));
-                    }
-
-                    if (lastToken == TOKEN_UL_LI || 
-                        lastToken == TOKEN_OL_LI) {
-                        
-                        out.push(new Token(lastToken, this._buf.join(" ")));
-                        
-                        while (depthStack.length > 0) {
-                            out.push(depthStack.pop());
-                        }
-                    }
-                    
-                    while (TOKEN_END == lineData.token && bqDepth > 0) {
-                        out.push(new Token(TOKEN_BQ_END));
-                        bqDepth--;
-                    }
-
-                    this._buf = [];
-                    assert(depthStack.length == 0)
-                    assert(TOKEN_END != lineData.token || bqDepth == 0)
-                    break;
-                
-                case TOKEN_OL_LI:
-                    if (lineData.token == lastToken ||
-                        lastToken == TOKEN_UL_LI ||
-                        lastToken == TOKEN_BLANK) {
-                        
-                        if (lineData.depth != depthStack.length-1) {
-                            if (lastToken == lineData.token ||
-                                lastToken == TOKEN_UL_LI) {
-                                out.push(new Token(TOKEN_OL_LI, this._buf.join(" ")));
-                                this._buf = [];
-                            }
-                            out.push(new Token(
-                                lineData.depth > depthStack.length-1 ? TOKEN_OL_BEGIN : TOKEN_OL_END));
-                            depthStack.push(new Token(TOKEN_OL_END));
-                            //lastDepth = lineData.depth;
-                        } else {
-                            out.push(new Token(TOKEN_OL_LI, this._buf.join(" ")));
-                            this._buf = [];
-                        }
-
-                    }
-
-                    this._buf.push(lineData.content);
-                    break;
-
-                case TOKEN_UL_LI:
-                    if (lineData.token == lastToken ||
-                        lastToken == TOKEN_OL_LI ||
-                        lastToken == TOKEN_BLANK) {
-                        
-                        if (lineData.depth != depthStack.length-1) {
-                            if (lastToken == lineData.token ||
-                                lastToken == TOKEN_OL_LI) {
-                                out.push(new Token(TOKEN_UL_LI, this._buf.join(" ")));
-                                this._buf = [];
-                            }
-                            out.push(new Token(
-                                lineData.depth > depthStack.length-1 ? TOKEN_UL_BEGIN : TOKEN_UL_END));
-                            
-                            depthStack.push(new Token(TOKEN_UL_END));
-                            //lastDepth = lineData.depth;
-                        } else {
-                            out.push(new Token(TOKEN_UL_LI, this._buf.join(" ")));
-                            this._buf = [];
-                        }
-                    }
-
-                    this._buf.push(lineData.content);
-                    break;
-
-                case TOKEN_TEXT:
-                    this._buf.push(lineData.content);
-                    break;
-
-                default:
-                    throw new Error('ivnalid token');
-                    break;
-            }
-
-            lastToken = lineData.token;
+            this.lexLine(data[i], out);
         }
 
         return out;
     },
 
-    detectToken: function(line, lastToken, lastDepth) {
+    lexLine: function(line, out) {
+        var lineData = this._detectToken(line);
+        debug('LEX:', lineData);
+        
+        if (lineData.token == TOKEN_BQ_LI) {
+            while (lineData.depth > this._bqDepth) {
+                if (this._buf.length > 0 && this._lastToken == TOKEN_TEXT) {
+                    out.push(new Token(TOKEN_PARA, this._buf.join(" ")));
+                    this._buf = [];
+                }
+            
+                out.push(new Token(TOKEN_BQ_BEGIN));
+                this._bqDepth++;
+            }
+
+            while (lineData.depth < this._bqDepth) {
+                if (this._buf.length > 0 && this._lastToken == TOKEN_TEXT) {
+                    out.push(new Token(TOKEN_PARA, this._buf.join(" ")));
+                    this._buf = [];
+                }
+                
+                out.push(new Token(TOKEN_BQ_END));
+                this._bqDepth--;
+            }
+            
+            lineData = this._detectToken(lineData.content);
+        }
+
+        switch (lineData.token) {
+            case TOKEN_END:
+            case TOKEN_BLANK:
+                if (this._buf.length > 0 && this._lastToken == TOKEN_TEXT) {
+                    out.push(new Token(TOKEN_PARA, this._buf.join(" ")));
+                }
+
+                if (this._lastToken == TOKEN_UL_LI || 
+                    this._lastToken == TOKEN_OL_LI) {
+                    
+                    out.push(new Token(this._lastToken, this._buf.join(" ")));
+                    
+                    while (this._depthStack.length > 0) {
+                        out.push(this._depthStack.pop());
+                    }
+                }
+                
+                while (TOKEN_END == lineData.token && this._bqDepth > 0) {
+                    out.push(new Token(TOKEN_BQ_END));
+                    this._bqDepth--;
+                }
+
+                this._buf = [];
+                assert(this._depthStack.length == 0)
+                assert(TOKEN_END != lineData.token || this._bqDepth == 0)
+                break;
+            
+            case TOKEN_SECTION:
+                out.push(new Token(TOKEN_SECTION, lineData.content, lineData.depth));
+                break;
+            
+            case TOKEN_OL_LI:
+                if (lineData.token == this._lastToken ||
+                    this._lastToken == TOKEN_UL_LI ||
+                    this._lastToken == TOKEN_BLANK) {
+                    
+                    if (lineData.depth != this._depthStack.length-1) {
+                        if (this._lastToken == lineData.token ||
+                            this._lastToken == TOKEN_UL_LI) {
+                            out.push(new Token(TOKEN_OL_LI, this._buf.join(" ")));
+                            this._buf = [];
+                        }
+                        out.push(new Token(
+                            lineData.depth > this._depthStack.length-1 ? TOKEN_OL_BEGIN : TOKEN_OL_END));
+                        this._depthStack.push(new Token(TOKEN_OL_END));
+                        //lastDepth = lineData.depth;
+                    } else {
+                        out.push(new Token(TOKEN_OL_LI, this._buf.join(" ")));
+                        this._buf = [];
+                    }
+
+                }
+
+                this._buf.push(lineData.content);
+                break;
+
+            case TOKEN_UL_LI:
+                if (lineData.token == this._lastToken ||
+                    this._lastToken == TOKEN_OL_LI ||
+                    this._lastToken == TOKEN_BLANK) {
+                    
+                    if (lineData.depth != this._depthStack.length-1) {
+                        if (this._lastToken == lineData.token ||
+                            this._lastToken == TOKEN_OL_LI) {
+                            out.push(new Token(TOKEN_UL_LI, this._buf.join(" ")));
+                            this._buf = [];
+                        }
+                        out.push(new Token(
+                            lineData.depth > this._depthStack.length-1 ? TOKEN_UL_BEGIN : TOKEN_UL_END));
+                        
+                        this._depthStack.push(new Token(TOKEN_UL_END));
+                        //lastDepth = lineData.depth;
+                    } else {
+                        out.push(new Token(TOKEN_UL_LI, this._buf.join(" ")));
+                        this._buf = [];
+                    }
+                }
+
+                this._buf.push(lineData.content);
+                break;
+
+            case TOKEN_TEXT:
+                this._buf.push(lineData.content);
+                break;
+
+            default:
+                throw new Error('ivnalid token');
+                break;
+        }
+
+        this._lastToken = lineData.token;
+    },
+
+    _detectToken: function(line) {
         var depth,
-            raw;
+            raw,
+            lastToken = this._lastToken,
+            lastDepth = this._depthStack.length - 1;
 
-        console.log('DETECT:', line, lastToken, lastDepth);
-
+        debug('DETECT:', line, lastToken, lastDepth);
+        
         // Blank
         if (/^(\t|\s)*$/.test(line)) {
             return { token: TOKEN_BLANK };
@@ -275,6 +275,10 @@ Lexer.prototype = {
             return { token: TOKEN_BQ_LI,
                      content: raw[2].trim(),
                      depth: raw[1].length };
+        }
+
+        if (line == null) {
+            return { token: TOKEN_END };
         }
 
         return { token: TOKEN_TEXT, content: line.trim() };

@@ -6,7 +6,7 @@ var DEBUG = true,
 if (DEBUG) assert = require('assert');
 
 function debug() {
-    if (DEBUG) console.log.apply(this, arguments);
+    if (DEBUG) console.error.apply(this, arguments);
 }
 
 function strMul(str, i) {

@@ -2,6 +2,7 @@
 
 var Lexer = require('./lexer').Lexer,
     Token = require('./lexer').Token,
+    fs = require('fs'),
     assert = require('assert');
 
 function HTMLParser() {};
@@ -147,4 +148,10 @@ var testText = "# First Title\n" +
     ">> * Have some depth!\n" +
     ">> * Have some depth!\n";
 
-test2();
+if (process.argv.length < 3) {
+    console.log("Usage: legalese.js [file] ");
+} else {
+    var data = fs.readFileSync(process.argv[2], {encoding: 'utf-8'}).split('\n');
+    console.log(new HTMLParser().parse(data));
+}
+

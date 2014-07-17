@@ -9,14 +9,20 @@ var TOKEN_BEGIN = 0,
 
     TOKEN_BLANK = 10,
     TOKEN_PARA = 11,
+
     TOKEN_UL_LI = 12,
     TOKEN_UL_BEGIN = 13,
     TOKEN_UL_END = 14,
+
     TOKEN_OL_LI = 15,
     TOKEN_OL_BEGIN = 16,
     TOKEN_OL_END = 17,
 
-    TOKEN_SECTION = 20;
+    TOKEN_BQ_LI = 18,
+    TOKEN_BQ_BEGIN = 19,
+    TOKEN_BQ_END = 20,
+
+    TOKEN_SECTION = 30;
 
 function Token(type, content, depth) {
     this.type = type;
@@ -40,6 +46,7 @@ Lexer.prototype = {
             lineData, 
             lastToken = TOKEN_BEGIN,
             depthStack = [],
+            bqDepth = 0,
             out = [];
 
         for (i = 0, ii = data.length; i <= ii; ++i) {
@@ -53,6 +60,37 @@ Lexer.prototype = {
             console.log('LEX:', lineData);
             
             switch (lineData.token) {
+                case TOKEN_BQ_LI:
+                    while (lineData.depth > bqDepth) {
+                        if (this._buf.length > 0 && lastToken == TOKEN_TEXT) {
+                            out.push(new Token(TOKEN_PARA, this._buf.join(" ")));
+                            this._buf = [];
+                        }
+                    
+                        out.push(new Token(TOKEN_BQ_BEGIN));
+                        bqDepth++;
+                    }
+
+                    while (lineData.depth < bqDepth) {
+                        if (this._buf.length > 0 && lastToken == TOKEN_TEXT) {
+                            out.push(new Token(TOKEN_PARA, this._buf.join(" ")));
+                            this._buf = [];
+                        }
+                        
+                        out.push(new Token(TOKEN_BQ_END));
+                        bqDepth--;
+                    }
+
+                    // no break on purpose. :)
+                    //
+                    // TODO: fix this dodgy hack by having a proper state object
+                    // and a method for parsing one line at a time.
+                    //lineData = this.detectToken(lineData.content, lastToken, depthStack.length-1);
+
+                    data[i] = lineData.content;
+                    i--;
+                    continue;
+
                 case TOKEN_SECTION:
                     out.push(new Token(TOKEN_SECTION, lineData.content, lineData.depth));
                     break;
@@ -73,8 +111,14 @@ Lexer.prototype = {
                         }
                     }
                     
+                    while (TOKEN_END == lineData.token && bqDepth > 0) {
+                        out.push(new Token(TOKEN_BQ_END));
+                        bqDepth--;
+                    }
+
                     this._buf = [];
                     assert(depthStack.length == 0)
+                    assert(TOKEN_END != lineData.token || bqDepth == 0)
                     break;
                 
                 case TOKEN_OL_LI:
@@ -146,6 +190,8 @@ Lexer.prototype = {
         var depth,
             raw;
 
+        console.log('DETECT:', line, lastToken, lastDepth);
+
         // Blank
         if (/^(\t|\s)*$/.test(line)) {
             return { token: TOKEN_BLANK };
@@ -168,31 +214,38 @@ Lexer.prototype = {
         // Ordered lists
         // TODO: make this variable for the various number types
         if (/^\s*\d+\. /.test(line)) {
+            raw = /^(\s*)\d+\. (.*)/.exec(line);
+            
+            if (raw[1].length % 2 != 0) {
+                throw new Error("List items must be indented by two spaces for each depth.");
+            }
+            
+            depth = raw[1].length / 2;
+            
             if (lastToken != TOKEN_OL_LI &&
                 lastToken != TOKEN_BLANK &&
                 lastToken != TOKEN_TEXT) {
                 throw new Error("There's a list without a new line before it, it seems.");
             }
-
-            raw = /^(\s*)\d+\. (.*)/.exec(line);
-
-            if (raw[1].length % 2 != 0) {
-                throw new Error("List items must be indented by two spaces for each depth.");
-            }
             
+            if ((lastToken != TOKEN_OL_LI && lastToken != TOKEN_BLANK && lastToken != TOKEN_TEXT) &&
+                !(lastToken == TOKEN_UL_LI && lastDepth <= depth)) {
+                throw new Error("There's a list without a new line before it, it seems.");
+            }
+
             if (lastToken == TOKEN_UL_LI && 
-                 lastDepth == raw[1].length / 2) {
+                lastDepth == depth) {
                 throw new Error ("You cannot place an ordered list item in an unordered list.");
             }
 
             return { token: TOKEN_OL_LI,
                      content: raw[2],
-                     depth: raw[1].length / 2 };
+                     depth: depth };
         }
 
         // Unordered lists
         if (/^\s*\*\s/.test(line)) {
-            raw = /^(\s*)\* (.*)/.exec(line)
+            raw = /^(\s*)\* (.*)/.exec(line);
             
             if (raw[1].length % 2 != 0) {
                 throw new Error("List items must be indented by two spaces for each depth.");
@@ -206,13 +259,22 @@ Lexer.prototype = {
             }
 
             if (lastToken == TOKEN_OL_LI && 
-                 lastDepth == depth) {
+                lastDepth == depth) {
                 throw new Error ("You cannot place an unordered list item in an ordered list.");
             }
 
             return { token: TOKEN_UL_LI,
                      content: raw[2],
                      depth: depth };
+        }
+
+        // Blockquotes
+        if (/^>+/.test(line)) {
+            raw = /^(>+)(.*)/.exec(line);
+
+            return { token: TOKEN_BQ_LI,
+                     content: raw[2].trim(),
+                     depth: raw[1].length };
         }
 
         return { token: TOKEN_TEXT, content: line.trim() };
@@ -293,6 +355,14 @@ HTMLParser.prototype = {
 
                 case TOKEN_PARA:
                     out.push('<p>' + x.content + "</p>");
+                    break;
+
+                case TOKEN_BQ_BEGIN:
+                    out.push('<blockquote>');
+                    break;
+
+                case TOKEN_BQ_END:
+                    out.push('</blockquote>');
                     break;
 
                 case TOKEN_UL_BEGIN:
@@ -384,4 +454,11 @@ var testText = "# First Title\n" +
     "1. Ordered list!\n2. Another item!\n" +
     "  1. Another one.\n" +
     "  2. Another another.\n" +
-    "    * Depth of steel?\n";
+    "    * Depth of steel?\n" +
+    "\n" +
+    "> Quote!\n" +
+    ">> Have some depth!\n" +
+    ">> \n" +
+    ">> * Have some depth!\n" +
+    ">> * Have some depth!\n" +
+    ">> * Have some depth!\n";

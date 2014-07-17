@@ -285,47 +285,6 @@ Lexer.prototype = {
     }
 }
 
-function Parser() {};
-
-Parser.prototype = {
-    parse: function(data) {
-        var out = [],
-            depth = -1;
-
-        var lexer = new Lexer(data);
-        data = lexer.lex(data);
-        
-        data.forEach(function(x) {
-            switch (x.type) {
-                case TOKEN_SECTION:
-                    out.push('\n' + strMul('#', x.depth) + " " + x.content);
-                    break;
-                case TOKEN_PARA:
-                    out.push('\n' + x.content);
-                    break;
-                case TOKEN_UL_BEGIN:
-                    if (depth == -1) {
-                        out.push(''); // Force new line.
-                    }
-                    depth++;
-                    break;
-                case TOKEN_UL_END:
-                    depth--;
-                    break;
-                case TOKEN_UL_LI:
-                    out.push(strMul(' ', depth * 2) + "* " + x.content);
-                    break;
-                default:
-                    throw new Error("Invalid token");
-            }
-
-            assert(depth >= -1);
-        });
-
-        return out.join("\n").trim();
-    }
-}
-
 function HTMLParser() {};
 
 HTMLParser.prototype = {

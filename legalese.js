@@ -139,41 +139,6 @@ HTMLParser.prototype = {
     }
 }
 
-function test() {
-    return new Lexer().lex(testText.split('\n'));
-}
-
-function test2() {
-    console.log(new HTMLParser().parse(testText.split('\n')));
-}
-
-var testText = "# First Title\n" +
-    "\n" +
-    "Sudden paragraph of great desire. Oh my desire oh my.\n" + 
-    "\n" +
-    "* Dot point\n" +
-    "* Dot point 2\n" +
-    "  * Dot point 2.1\n" +
-    "  * Dot point 2.2\n" +
-    "\n" +
-    "* Next list occurs\n" +
-    "\n" +
-    "## Second level title, woot\n" +
-    "\n" +
-    "* List ?\n" +
-    "\n" +
-    "1. Ordered list!\n2. Another item!\n" +
-    "  1. Another one.\n" +
-    "  2. Another another.\n" +
-    "    * Depth of steel?\n" +
-    "\n" +
-    "> Quote!\n" +
-    ">> Have some depth!\n" +
-    ">> \n" +
-    ">> * Have some depth!\n" +
-    ">> * Have some depth!\n" +
-    ">> * Have some depth!\n";
-
 if (process.argv.length < 3) {
     console.log("Usage: legalese.js [file] ");
 } else {

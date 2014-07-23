@@ -93,7 +93,7 @@ Lexer.prototype = {
             },
         },
         "upper-roman": {
-            regex: "M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})",
+            regex: "(?:M{0,4})(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})",
             parse: function(v) {
                 var result = 0,
                     index = 0,
@@ -126,7 +126,7 @@ Lexer.prototype = {
             }
         },
         "lower-roman": {
-            regex: "m{0,4}(cm|cd|d?c{0,3})(xc|xl|l?x{0,3})(ix|iv|v?i{0,3})",
+            regex: "(?:m{0,4})(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3})",
             parse: function(v) {
                 var result = 0,
                     index = 0,
@@ -348,6 +348,10 @@ Lexer.prototype = {
         switch (token) {
             case "ol":
                 r = new RegExp("^  (\\s*)(" + this._tokenRegex[token].join("|") + ")(.*)");
+                break;
+            case "h":
+                r = new RegExp("^(#+)\\s*(" + this._tokenRegex[token].join("|") + "|)(.*)");
+                break;
         }
 
         debug("TOKEN-REGEX:", r);
@@ -364,21 +368,24 @@ Lexer.prototype = {
         debug('DETECT:', line, lastToken, lastDepth);
         
         // Blank
-        if (/^(\t|\s)*$/.test(line)) {
+        if (/^\s*$/.test(line)) {
             return { token: Token.BLANK };
         }
         
         // Sections
-        if (/^#+/.test(line)) {
+        if (this._getTokenRegex('h').test(line)) {
             if (lastToken != Token.BLANK &&
                 lastToken != Token.BEGIN) {
                 throw new Error("There's a section without a new line before it, it seems.");
             }
 
-            depth = /^(#+)/.exec(line)[1].length;
+            raw = this._getTokenRegex('h').exec(line);
+           
+            console.log("FOO:",raw);
+
             return { token: Token.SECTION,
-                     content: line.substring(depth).trim(),
-                     depth: depth };
+                     content: raw[3].trim(),
+                     depth: raw[1].length };
         }
         
         // Ordered lists

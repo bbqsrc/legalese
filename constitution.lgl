@@ -1,5 +1,7 @@
 ! ol:level(1) { token: /\(`decimal`\)/ }
 ! ol:level(2) { token: /\(`lower-alpha`\)/ }
+! h:level(3) { token: /`decimal`\.`decimal`/ }
+! h:level(2) { token: /`decimal`/ }
 ! h:level(1) { token: /Part `upper-roman`:/ }
 
 # Part I: Principles & Objects of the Party
@@ -62,7 +64,7 @@ forms of political or public corruption.
 
 ## 7  Financial Structure
 
-## 7.1  Property
+### 7.1  Property
 
   (3) All bank accounts of the Party will:
     (a) be held separately from those of its members;

@@ -3,6 +3,7 @@
 var Lexer = require('./lexer').Lexer,
     Token = require('./lexer').Token,
     fs = require('fs'),
+    util = require('util'),
     assert = require('assert');
 
 function HTMLParser() {};
@@ -22,14 +23,18 @@ HTMLParser.prototype = {
         data.forEach(function(x) {
             switch (x.type) {
                 case Token.SECTION:
-                    while (sectionDepth < x.depth) {
-                        out.push("<div class='section'>");
-                        sectionDepth++;
-                    }
-                    
-                    while (sectionDepth > x.depth) {
-                        out.push("</div>");
-                        sectionDepth--;
+                    if (sectionDepth != x.depth) {
+                        while (sectionDepth < x.depth) {
+                            out.push("<div class='section'>");
+                            sectionDepth++;
+                        }
+                        
+                        while (sectionDepth > x.depth) {
+                            out.push("</div>");
+                            sectionDepth--;
+                        }
+                    } else if (sectionDepth > 0) {
+                        out.push("</div>\n<div class='section'>");
                     }
 
                     out.push("<h" + sectionDepth + ">" +
@@ -97,14 +102,17 @@ HTMLParser.prototype = {
                     break;
 
                 case Token.DIRECTIVE:
-                    switch (x.content.selector.name) {
-                        case 'h':
-                            styles.push("h" + x.content.selector.pseudo + ":before { content: 'stub '; }");
+                    if (x.content.selector.name == "h" && x.content.selector.pseudo.name == "every") {
+                        styles.push("h" + 
+                                    x.content.selector.pseudo.args[0] + 
+                                    ":before { content: '" + 
+                                    x.content.rules[0].value +
+                                    "'; }");
                     }
                     break;
                         
                 default:
-                    throw new Error("Invalid token: " + x.type);
+                    throw new Error("Invalid token: " + util.inspect(x));
             }
 
             lastToken = x.type;
@@ -140,7 +148,7 @@ HTMLParser.prototype = {
 }
 
 if (process.argv.length < 3) {
-    console.log("Usage: legalese.js [file] ");
+    console.log("Usage: legalese.js [file]");
 } else {
     var data = fs.readFileSync(process.argv[2], {encoding: 'utf-8'}).split('\n');
     console.log(new HTMLParser().parse(data));

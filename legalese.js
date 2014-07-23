@@ -6,6 +6,92 @@ var Lexer = require('./lexer').Lexer,
     util = require('util'),
     assert = require('assert');
 
+function LaTeXParser() {};
+
+LaTeXParser.prototype = {
+    parse: function(data) {
+        var self = this,
+            out = [];
+
+        var lexer = new Lexer(data);
+        data = lexer.lex(data);
+        
+        data.forEach(function(x) {
+            switch (x.type) {
+                case Token.SECTION:
+                    switch (x.depth) {
+                        case 1:
+                            out.push("\\part{" + self._handleContent(x.content) + "}\n");
+                            break;
+                        case 2:
+                            out.push("\\section{" + self._handleContent(x.content) + "}\n");
+                            break;
+                        case 3:
+                            out.push("\\subsection{" + self._handleContent(x.content) + "}\n");
+                            break;
+                    }
+                    break;
+
+                case Token.PARA:
+                    out.push(self._handleContent(x.content) + "\n");
+                    break;
+
+                case Token.BQ_BEGIN:
+                    break;
+
+                case Token.BQ_END:
+                    break;
+
+                case Token.UL_BEGIN:
+                    out.push('\\begin{itemize}');
+                    break;
+                
+                case Token.UL_END:
+                    out.push('\\end{itemize}\n');
+                    break;
+                
+                case Token.OL_BEGIN:
+                    out.push('\\begin{enumerate}');
+                    break;
+                
+                case Token.OL_END:
+                    out.push('\\end{enumerate}\n');
+                    break;
+
+                case Token.OL_LI:
+                case Token.UL_LI:
+                    out.push("\\item " + self._handleContent(x.content));
+                    break;
+
+                case Token.DIRECTIVE:
+                    break;
+                
+                default:
+                    throw new Error("Invalid token: " + util.inspect(x));
+            }
+        });
+
+        return out.join('\n');
+    },
+
+    _handleContent: function(content) {
+        return content.map(function(c) {
+            switch (c.type) {
+                case Token.TEXT:
+                    return c.content;
+                case Token.BOLD:
+                    return "\\textbf{" + c.content + "}";
+                case Token.ITALIC:
+                    return "\\textit{" + c.content + "}";
+                case Token.UNDERLINE:
+                    return "\\underline{" + c.content + "}";
+                default:
+                    throw new Error("Invalid content token: " + c.type);
+            }
+        }).join("");
+    }
+}
+
 function HTMLParser() {};
 
 HTMLParser.prototype = {
@@ -148,9 +234,20 @@ HTMLParser.prototype = {
 }
 
 if (process.argv.length < 3) {
-    console.log("Usage: legalese.js [file]");
+    console.log("Usage: legalese.js [--latex] file");
 } else {
+    var argv = process.argv,
+        latex = argv.indexOf("--latex");
+
+    if (latex > -1) {
+        argv = argv.splice(latex, 1);
+    }
     var data = fs.readFileSync(process.argv[2], {encoding: 'utf-8'}).split('\n');
-    console.log(new HTMLParser().parse(data));
+    
+    if (latex > -1) {
+        console.log(new LaTeXParser().parse(data));
+    } else {
+        console.log(new HTMLParser().parse(data));
+    }
 }
 

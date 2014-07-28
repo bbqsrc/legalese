@@ -18,6 +18,9 @@ function last(ary) {
 }
 
 function Token(type, content, depth) {
+    if (type == null) {
+        throw new TypeError("type must be defined");
+    }
     this.type = type;
     this.content = content || [];
     this.depth = depth;
@@ -210,10 +213,17 @@ Lexer.prototype = {
                 delete lineData.token; // This never happened. >_> <_<
                 out.push(new Token(Token.DIRECTIVE, lineData));
                 break;
+            
+            case Token.BQ_LI:
+                this._processCurrent();
+                this._processBqDepth(lineData.depth);
+                this.lexLine(lineData.content);
+                break;
 
             case Token.END:
             case Token.BLANK:
                 this._processCurrent();
+                this._processBqDepth(0);
                 this._processListDepth(-1);
                 break;
             
@@ -241,6 +251,22 @@ Lexer.prototype = {
         }
 
         this._lastToken = lineData.token;
+    },
+
+    _processBqDepth: function(depth) {
+        if (depth > this._bqDepth) {
+            if (depth > this._bqDepth + 1) {
+                throw new Error("You can't go up more than one level in one fell swoop!");
+            }
+           
+            this._tokens.push(new Token(Token.BQ_BEGIN));
+            this._bqDepth++;
+        }
+
+        while (depth < this._bqDepth) {
+            this._tokens.push(new Token(Token.BQ_END));
+            this._bqDepth--;
+        }
     },
 
     _processListDepth: function(depth, type) {

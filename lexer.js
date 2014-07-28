@@ -35,6 +35,11 @@ function Token(type, content, depth) {
     Object.defineProperty(Token, t, { value: i, enumerable: true});
 });
 
+var Regex = {
+    get LINK() {
+        return /\[(.*?)\]\((.*?)(?: "(.*?)")?\)/g;
+    }
+}
 
 debug(require('util').inspect(Token));
 // TODO: implement ref, link, bold, italic, underline, sup, sub,
@@ -290,16 +295,38 @@ Lexer.prototype = {
 
     _lexContent: function(line) {
         var chars = line.split(""),
-            token,
             tokens = [],
+            token,
             buf = [],
             states = {},
-            ch, i, ii;
+            ch, i, ii, tmp;
 
         for (i = 0, ii = chars.length; i < ii; ++i) {
             ch = chars[i];
 
             switch(ch) {
+                case '[':
+                    tmp = chars.slice(i, ii).join("");
+                    if (Regex.LINK.test(tmp)) {
+                        if (buf.length) {
+                            tokens.push(new Token(Token.TEXT, buf.join("")));
+                            buf = [];
+                        }
+                        tmp = Regex.LINK.exec(tmp);
+                       
+                        token = new Token(Token.LINK, this._lexContent(tmp[1]));
+                        token.href = tmp[2];
+                        if (tmp[3]) {
+                            token.title = tmp[3];
+                        }
+
+                        tokens.push(token);
+
+                        // Skip the bits we've already done now
+                        i = ii - i + 1;
+                    }
+                    break;
+
                 case '*':
                     states.bold = !states.bold;
                     tokens.push(new Token(states.bold ? Token.TEXT : Token.BOLD, buf.join("")));
@@ -335,9 +362,11 @@ Lexer.prototype = {
             tokens.push(new Token(Token.TEXT, buf.join("")));
         }
 
-        if (states.bold || states.italic || states.underline) {
-            throw new Error("Unclosed tag on line foo");
-        }
+        Object.keys(states).forEach(function(state) {
+            if (states[state]) {
+                throw new Error("State '" + state + "' should not be true.");
+            }
+        });
 
         return tokens;
     },

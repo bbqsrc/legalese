@@ -216,8 +216,14 @@ HTMLParser.prototype = {
     },
 
     _handleContent: function(content) {
+        var self = this;
+
         return content.map(function(c) {
             switch (c.type) {
+                case Token.LINK:
+                    return "<a href='" + c.href + "'" +
+                    (c.title ? " title='" + c.title + "'" : "") +
+                    ">" + self._handleContent(c.content) + "</a>";
                 case Token.TEXT:
                     return c.content;
                 case Token.BOLD:
